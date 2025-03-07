@@ -222,6 +222,9 @@ u32 __afl_already_initialized_init;
 
 static int __afl_dummy_fd[2] = {2, 2};
 
+/* Where afl map dump to */
+static char *__afl_map_dump_path = NULL;
+
 /* ensure we kill the child on termination */
 
 static void at_exit(int signal) {
@@ -1714,6 +1717,25 @@ void __sanitizer_cov_pcs_init(const uintptr_t *pcs_beg,
 
 #endif  // __AFL_CODE_COVERAGE
 
+void dump_afl_map(void) {
+  if (__afl_debug) {
+    fprintf(stderr, "DEBUG: Dumping afl map to %s: addr: %p, size: 0x%x \n",
+            __afl_map_dump_path, __afl_area_ptr, __afl_map_size);
+  }
+  FILE *dump_file = fopen(__afl_map_dump_path, "w");
+  if (dump_file != NULL) {
+    if (fwrite(__afl_area_ptr, 1, __afl_map_size, dump_file) !=
+        __afl_map_size) {
+      fprintf(stderr, "[!] Error writing to %s: %s\n", __afl_map_dump_path,
+              strerror(errno));
+    }
+    fclose(dump_file);
+  } else {
+    fprintf(stderr, "[!] Error opening %s: %s\n", __afl_map_dump_path,
+            strerror(errno));
+  }
+}
+
 /* Init callback. Populates instrumentation IDs. Note that we're using
    ID of 0 as a special value to indicate non-instrumented bits. That may
    still touch the bitmap, but in a fairly harmless way. */
@@ -1944,6 +1966,13 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop) {
 
   }
 
+  __afl_map_dump_path = getenv("AFL_MAP_DUMP_PATH");
+  if (__afl_map_dump_path != NULL) {
+    if (__afl_debug) {
+      fprintf(stderr, "DEBUG: AFL_MAP_DUMP_PATH=%s\n", __afl_map_dump_path);
+    }
+    atexit(dump_afl_map);
+  }
 }
 
 ///// CmpLog instrumentation
